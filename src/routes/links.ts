@@ -1,0 +1,227 @@
+import type { Env } from '../index';
+import { getUserFromRequest } from '../lib/auth';
+import { parseUserAgent } from '../lib/ua-parse';
+
+const DATACENTER_HINTS = ['amazon', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner'];
+
+
+
+export async function handleListLinks(request: Request, env: Env): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const { results } = await env.link_tracker_db
+    .prepare(
+      `SELECT links.id, links.slug, links.destination_url, links.created_at,
+              COUNT(click_events.id) as total_clicks
+       FROM links
+       LEFT JOIN click_events ON click_events.link_id = links.id
+       WHERE links.user_id = ?
+       GROUP BY links.id
+       ORDER BY links.created_at DESC`
+    )
+    .bind(user.id)
+    .all();
+
+  return new Response(JSON.stringify({ links: results }), {
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+export async function handleCreateLink(request: Request, env: Env): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const body = await request.json<{ slug?: string; destination_url?: string }>().catch(() => null);
+  const slug = body?.slug?.trim();
+  const destinationUrl = body?.destination_url?.trim();
+
+  if (!slug || !destinationUrl || !/^[a-zA-Z0-9_-]+$/.test(slug)) {
+    return new Response(JSON.stringify({ error: 'Valid slug and destination_url required' }), { status: 400 });
+  }
+
+  const existing = await env.link_tracker_db
+    .prepare('SELECT id FROM links WHERE slug = ?')
+    .bind(slug)
+    .first();
+
+  if (existing) {
+    return new Response(JSON.stringify({ error: 'Slug already taken' }), { status: 409 });
+  }
+
+  const id = crypto.randomUUID();
+  await env.link_tracker_db
+    .prepare('INSERT INTO links (id, user_id, slug, destination_url, created_at) VALUES (?, ?, ?, ?, ?)')
+    .bind(id, user.id, slug, destinationUrl, Date.now())
+    .run();
+
+  return new Response(JSON.stringify({ ok: true, id, slug }), {
+    status: 201,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+export async function handleUpdateLink(request: Request, env: Env, linkId: string): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const body = await request.json<{ destination_url?: string }>().catch(() => null);
+  const destinationUrl = body?.destination_url?.trim();
+  if (!destinationUrl) {
+    return new Response(JSON.stringify({ error: 'destination_url required' }), { status: 400 });
+  }
+
+  const result = await env.link_tracker_db
+    .prepare('UPDATE links SET destination_url = ? WHERE id = ? AND user_id = ?')
+    .bind(destinationUrl, linkId, user.id)
+    .run();
+
+  if (result.meta.changes === 0) {
+    return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+  }
+
+  return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
+}
+
+export async function handleDeleteLink(request: Request, env: Env, linkId: string): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const link = await env.link_tracker_db
+    .prepare('SELECT id FROM links WHERE id = ? AND user_id = ?')
+    .bind(linkId, user.id)
+    .first();
+  if (!link) return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+
+  await env.link_tracker_db.prepare('DELETE FROM click_events WHERE link_id = ?').bind(linkId).run();
+  await env.link_tracker_db.prepare('DELETE FROM links WHERE id = ?').bind(linkId).run();
+
+  return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
+}
+
+export async function handleGetLinkSummary(request: Request, env: Env, linkId: string): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const link = await env.link_tracker_db
+    .prepare('SELECT id, slug, destination_url FROM links WHERE id = ? AND user_id = ?')
+    .bind(linkId, user.id)
+    .first<{ id: string; slug: string; destination_url: string }>();
+  if (!link) return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+
+  const { results } = await env.link_tracker_db
+    .prepare(
+      `SELECT timestamp, country, city, user_agent, ip_asn, ip_hash, bot_score, referrer
+       FROM click_events WHERE link_id = ? ORDER BY timestamp ASC`
+    )
+    .bind(linkId)
+    .all<{
+      timestamp: number; country: string | null; city: string | null;
+      user_agent: string | null; ip_asn: string | null; ip_hash: string | null;
+      bot_score: number | null; referrer: string | null;
+    }>();
+
+  const clicks = results;
+  const totalClicks = clicks.length;
+  const uniqueVisitors = new Set(clicks.map(c => c.ip_hash).filter(Boolean)).size;
+  const avgBotScore = totalClicks
+    ? Math.round(clicks.reduce((sum, c) => sum + (c.bot_score ?? 0), 0) / totalClicks)
+    : 0;
+
+  const countryCounts: Record<string, number> = {};
+  const deviceCounts: Record<string, number> = {};
+  const referrerCounts: Record<string, number> = {};
+  let vpnCount = 0;
+
+  for (const c of clicks) {
+    const country = c.country || 'Unknown';
+    countryCounts[country] = (countryCounts[country] || 0) + 1;
+
+    const { browser, os } = parseUserAgent(c.user_agent || '');
+    const deviceKey = `${browser} / ${os}`;
+    deviceCounts[deviceKey] = (deviceCounts[deviceKey] || 0) + 1;
+
+    let ref = 'Direct';
+    if (c.referrer) {
+      try { ref = new URL(c.referrer).hostname; } catch { ref = c.referrer; }
+    }
+    referrerCounts[ref] = (referrerCounts[ref] || 0) + 1;
+
+    const asOrg = (c.ip_asn || '').toLowerCase();
+    if (DATACENTER_HINTS.some(h => asOrg.includes(h))) vpnCount++;
+  }
+
+  const toRankedList = (counts: Record<string, number>) =>
+    Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }));
+
+  const trendMap: Record<string, number> = {};
+  for (const c of clicks) {
+    const day = new Date(c.timestamp).toISOString().slice(0, 10);
+    trendMap[day] = (trendMap[day] || 0) + 1;
+  }
+  const trend = Object.entries(trendMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, count]) => ({ day, count }));
+
+  return new Response(JSON.stringify({
+    slug: link.slug,
+    destination_url: link.destination_url,
+    total_clicks: totalClicks,
+    unique_visitors: uniqueVisitors,
+    avg_bot_score: avgBotScore,
+    vpn_count: vpnCount,
+    top_countries: toRankedList(countryCounts).slice(0, 8),
+    devices: toRankedList(deviceCounts).slice(0, 8),
+    referrers: toRankedList(referrerCounts).slice(0, 8),
+    trend,
+  }), { headers: { 'content-type': 'application/json' } });
+}
+
+export async function handleGetLinkClicks(request: Request, env: Env, linkId: string): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const link = await env.link_tracker_db
+    .prepare('SELECT id FROM links WHERE id = ? AND user_id = ?')
+    .bind(linkId, user.id)
+    .first();
+  if (!link) return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+
+  const { results } = await env.link_tracker_db
+    .prepare(
+      `SELECT timestamp, country, city, user_agent, bot_score, referrer, ip_asn, ip_hash,
+              os_version, is_in_app_browser, bot_score_reasons, colo, tls_version, http_protocol, raw_headers
+       FROM click_events WHERE link_id = ? ORDER BY timestamp DESC LIMIT 100`
+    )
+    .bind(linkId)
+    .all<any>();
+
+  const chronological = [...results].sort((a, b) => a.timestamp - b.timestamp);
+  const visitCountMap: Record<string, number> = {};
+  const visitNumByKey: Record<string, number> = {};
+  for (const c of chronological) {
+    const key = c.ip_hash || 'unknown';
+    visitCountMap[key] = (visitCountMap[key] || 0) + 1;
+    visitNumByKey[`${key}:${c.timestamp}`] = visitCountMap[key];
+  }
+
+  const enriched = results.map(c => {
+    const asOrg = c.ip_asn || 'Unknown';
+    const isVpn = DATACENTER_HINTS.some(h => asOrg.toLowerCase().includes(h));
+    const { browser, os, device } = parseUserAgent(c.user_agent || '');
+    const visitNumber = visitNumByKey[`${c.ip_hash || 'unknown'}:${c.timestamp}`] || 1;
+
+    return {
+      timestamp: c.timestamp, country: c.country, city: c.city,
+      isp: asOrg, is_vpn: isVpn, browser, os,
+      os_version: c.os_version || null,
+      device, is_in_app_browser: !!c.is_in_app_browser,
+      bot_score: c.bot_score, referrer: c.referrer, visit_number: visitNumber,
+      reasons: c.bot_score_reasons ? JSON.parse(c.bot_score_reasons) : [],
+      colo: c.colo, tls_version: c.tls_version, http_protocol: c.http_protocol,
+      raw_headers: c.raw_headers ? JSON.parse(c.raw_headers) : {},
+    };
+  });
+
+  return new Response(JSON.stringify({ clicks: enriched }), { headers: { 'content-type': 'application/json' } });
+}

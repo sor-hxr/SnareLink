@@ -1,0 +1,12 @@
+{
+  "name": "snarelink",
+  "compatibility_date": "2026-07-23",
+  "main": "src/index.ts",
+  "d1_databases": [
+    {
+      "binding": "link_tracker_db",
+      "database_name": "snarelink-db",
+      "database_id": "d24e8119-d001-4bf5-943e-0664ea968dfe"
+    }
+  ]
+}
