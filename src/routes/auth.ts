@@ -56,7 +56,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'SnareLink <onboarding@resend.dev>',
+      from: 'SnareLink <login@snarelink.me>',
       to: [email],
       subject: 'Your SnareLink login link',
       html: `
@@ -147,9 +147,7 @@ export async function handleVerify(request: Request, env: Env): Promise<Response
     status: 302,
     headers: {
       Location: '/',
-      'set-cookie': `session=${sessionId}; Max-Age=${
-        SESSION_EXPIRY_MS / 1000
-      }; Path=/; HttpOnly; Secure; SameSite=Lax`,
+      'set-cookie': `session=${sessionId}; Max-Age=${SESSION_EXPIRY_MS / 1000}; Path=/; Domain=.snarelink.me; HttpOnly; Secure; SameSite=Lax`,
     },
   });
 }

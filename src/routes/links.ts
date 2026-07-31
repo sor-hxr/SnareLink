@@ -4,15 +4,33 @@ import { parseUserAgent } from '../lib/ua-parse';
 
 const DATACENTER_HINTS = ['amazon', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner'];
 
+function normalizeUrl(url: string): string | null {
+  let trimmed = url.trim();
+  if (!/^https?:\/\//i.test(trimmed)) {
+    trimmed = 'https://' + trimmed;
+  }
+  try {
+    new URL(trimmed);
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
 
 
 export async function handleListLinks(request: Request, env: Env): Promise<Response> {
   const user = await getUserFromRequest(request, env);
   if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
 
+  const userRow = await env.link_tracker_db
+    .prepare('SELECT plan_tier FROM users WHERE id = ?')
+    .bind(user.id)
+    .first<{ plan_tier: string }>();
+
   const { results } = await env.link_tracker_db
     .prepare(
-      `SELECT links.id, links.slug, links.destination_url, links.created_at,
+      `SELECT links.id, links.slug, links.destination_url, links.created_at, links.expires_at,
               COUNT(click_events.id) as total_clicks
        FROM links
        LEFT JOIN click_events ON click_events.link_id = links.id
@@ -23,39 +41,103 @@ export async function handleListLinks(request: Request, env: Env): Promise<Respo
     .bind(user.id)
     .all();
 
-  return new Response(JSON.stringify({ links: results }), {
+  return new Response(JSON.stringify({
+    links: results,
+    plan_tier: userRow?.plan_tier ?? 'free',
+    link_count: results.length,
+  }), {
     headers: { 'content-type': 'application/json' },
   });
+}
+
+export async function handleGetMe(request: Request, env: Env): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const userRow = await env.link_tracker_db
+    .prepare('SELECT username, plan_tier FROM users WHERE id = ?')
+    .bind(user.id)
+    .first<{ username: string | null; plan_tier: string }>();
+
+  return new Response(JSON.stringify({
+    username: userRow?.username ?? null,
+    plan_tier: userRow?.plan_tier ?? 'free',
+  }), {
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+export async function handleSetUsername(request: Request, env: Env): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const body = await request.json<{ username?: string }>().catch(() => null);
+  const username = body?.username?.trim().toLowerCase();
+
+  if (!username || !/^[a-z0-9_-]{3,20}$/.test(username)) {
+    return new Response(JSON.stringify({ error: 'Username must be 3-20 chars, letters/numbers/-/_ only' }), { status: 400 });
+  }
+
+  const existing = await env.link_tracker_db
+    .prepare('SELECT id FROM users WHERE username = ?')
+    .bind(username)
+    .first();
+  if (existing) return new Response(JSON.stringify({ error: 'Username taken' }), { status: 409 });
+
+  await env.link_tracker_db
+    .prepare('UPDATE users SET username = ? WHERE id = ?')
+    .bind(username, user.id)
+    .run();
+
+  return new Response(JSON.stringify({ ok: true, username }), { headers: { 'content-type': 'application/json' } });
 }
 
 export async function handleCreateLink(request: Request, env: Env): Promise<Response> {
   const user = await getUserFromRequest(request, env);
   if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
 
-  const body = await request.json<{ slug?: string; destination_url?: string }>().catch(() => null);
+  const userRow = await env.link_tracker_db
+    .prepare('SELECT username, plan_tier FROM users WHERE id = ?')
+    .bind(user.id)
+    .first<{ username: string | null; plan_tier: string }>();
+
+  if (!userRow?.username) {
+    return new Response(JSON.stringify({ error: 'Set a username before creating links' }), { status: 400 });
+  }
+
+  const body = await request.json<{ slug?: string; destination_url?: string; show_preview?: boolean }>().catch(() => null);
   const slug = body?.slug?.trim();
-  const destinationUrl = body?.destination_url?.trim();
+  const destinationUrl = body?.destination_url ? normalizeUrl(body.destination_url) : null;
 
   if (!slug || !destinationUrl || !/^[a-zA-Z0-9_-]+$/.test(slug)) {
     return new Response(JSON.stringify({ error: 'Valid slug and destination_url required' }), { status: 400 });
   }
 
-  const existing = await env.link_tracker_db
-    .prepare('SELECT id FROM links WHERE slug = ?')
-    .bind(slug)
-    .first();
-
-  if (existing) {
-    return new Response(JSON.stringify({ error: 'Slug already taken' }), { status: 409 });
+  if (userRow.plan_tier === 'free') {
+    const { results } = await env.link_tracker_db
+      .prepare('SELECT COUNT(*) as count FROM links WHERE user_id = ?')
+      .bind(user.id)
+      .all<{ count: number }>();
+    if ((results[0]?.count ?? 0) >= 3) {
+      return new Response(JSON.stringify({ error: 'Free tier limit reached (3 links). Delete one or upgrade.' }), { status: 403 });
+    }
   }
 
+  const existing = await env.link_tracker_db
+    .prepare('SELECT id FROM links WHERE user_id = ? AND slug = ?')
+    .bind(user.id, slug)
+    .first();
+  if (existing) return new Response(JSON.stringify({ error: 'You already have a link with this slug' }), { status: 409 });
+
   const id = crypto.randomUUID();
+  const expiresAt = userRow.plan_tier === 'free' ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
+
   await env.link_tracker_db
-    .prepare('INSERT INTO links (id, user_id, slug, destination_url, created_at) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, user.id, slug, destinationUrl, Date.now())
+    .prepare('INSERT INTO links (id, user_id, slug, destination_url, created_at, show_preview, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, user.id, slug, destinationUrl, Date.now(), body?.show_preview ? 1 : 0, expiresAt)
     .run();
 
-  return new Response(JSON.stringify({ ok: true, id, slug }), {
+  return new Response(JSON.stringify({ ok: true, id, slug, username: userRow.username }), {
     status: 201,
     headers: { 'content-type': 'application/json' },
   });
@@ -66,7 +148,7 @@ export async function handleUpdateLink(request: Request, env: Env, linkId: strin
   if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
 
   const body = await request.json<{ destination_url?: string }>().catch(() => null);
-  const destinationUrl = body?.destination_url?.trim();
+  const destinationUrl = body?.destination_url ? normalizeUrl(body.destination_url) : null;
   if (!destinationUrl) {
     return new Response(JSON.stringify({ error: 'destination_url required' }), { status: 400 });
   }

@@ -1,13 +1,18 @@
+/// <reference types="@cloudflare/workers-types" />
+
 import { handleRedirect } from './routes/redirect';
 import { handleLogin, handleVerify } from './routes/auth';
 import {
   handleListLinks, handleCreateLink, handleUpdateLink, handleDeleteLink,
+  handleSetUsername,
+  handleGetMe,
   handleGetLinkSummary, handleGetLinkClicks,
 } from './routes/links';
 import { handleEnrich } from './routes/enrich';
 import { serveDashboard } from './routes/dashboard';
 import { serveManifest } from './manifest';
 import { serveServiceWorker } from './sw';
+import { handleScheduled } from './scheduled';
 
 export interface Env {
   link_tracker_db: D1Database;
@@ -21,6 +26,8 @@ export default {
     if (url.pathname === '/') return serveDashboard();
     if (url.pathname === '/api/login') return handleLogin(request, env);
     if (url.pathname === '/api/verify') return handleVerify(request, env);
+    if (url.pathname === '/api/username') return handleSetUsername(request, env);
+    if (url.pathname === '/api/me') return handleGetMe(request, env);
     if (url.pathname === '/manifest.json') return serveManifest();
     if (url.pathname === '/sw.js') return serveServiceWorker();
 
@@ -43,7 +50,15 @@ export default {
       return request.method === 'POST' ? handleCreateLink(request, env) : handleListLinks(request, env);
     }
 
-    const slug = url.pathname.slice(1);
-    return handleRedirect(request, env, slug);
+    const pathParts = url.pathname.slice(1).split('/');
+    if (pathParts.length === 2 && pathParts[0] && pathParts[1]) {
+      return handleRedirect(request, env, pathParts[0], pathParts[1]);
+    }
+
+    return new Response('Not found', { status: 404 });
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env): Promise<void> {
+    await handleScheduled(env);
   },
 };

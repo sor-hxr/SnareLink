@@ -2,11 +2,15 @@ import { computeBotScore, hashIp } from '../lib/scoring';
 import { isInAppBrowser, isChromiumBased } from '../lib/ua-parse';
 import type { Env } from '../index';
 
-export async function handleRedirect(request: Request, env: Env, slug: string): Promise<Response> {
+export async function handleRedirect(request: Request, env: Env, username: string, slug: string): Promise<Response> {
   const link = await env.link_tracker_db
-    .prepare('SELECT id, destination_url FROM links WHERE slug = ?')
-    .bind(slug)
-    .first<{ id: string; destination_url: string }>();
+    .prepare(
+      `SELECT links.id, links.destination_url, links.show_preview
+       FROM links JOIN users ON links.user_id = users.id
+       WHERE users.username = ? AND links.slug = ?`
+    )
+    .bind(username, slug)
+    .first<{ id: string; destination_url: string; show_preview: number }>();
 
   if (!link) return new Response('Not found', { status: 404 });
 
@@ -42,6 +46,15 @@ export async function handleRedirect(request: Request, env: Env, slug: string): 
       inApp ? 1 : 0, JSON.stringify(reasons)
     )
     .run();
+
+  if (link.show_preview) {
+    const previewHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="3;url=${link.destination_url}">
+    <style>body{background:#0a0c10;color:#c7cdd8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
+    a{color:#5b7fff}</style></head><body>
+    <div><p>Redirecting you to:</p><p><strong>${link.destination_url}</strong></p><p><a href="${link.destination_url}">Continue now</a></p></div>
+    </body></html>`;
+    return new Response(previewHtml, { headers: { 'content-type': 'text/html' } });
+  }
 
   if (isChromiumBased(ua)) {
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>

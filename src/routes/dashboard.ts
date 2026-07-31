@@ -264,12 +264,19 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     </div>
   </div>
 
+  <div id="usernamePrompt" class="box" style="display:none"><h2>Choose a username</h2><input id="usernameInput" placeholder="yourname" /><button onclick="claimUsername()">Claim</button><div id="usernameMsg" class="msg"></div></div>
+
   <div id="dashboard">
     <div class="box">
       <h2>Create link</h2>
+      <div id="freeTierMsg" class="msg" style="display:none"></div>
       <div style="margin-top:14px">
         <input id="slug" placeholder="custom-slug" />
         <input id="destUrl" placeholder="https://destination-url.com" />
+        <label style="display:flex; align-items:center; gap:8px; margin: 4px 0 10px; font-size:0.85rem; color: var(--fg);">
+          <input type="checkbox" id="showPreview" style="width:auto; margin:0" />
+          <span>Show a preview page before redirecting</span>
+        </label>
         <button onclick="createLink()">Create</button>
         <div id="createMsg" class="msg"></div>
       </div>
@@ -278,7 +285,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     <div class="box">
       <h2>Your links</h2>
       <table id="linksTable">
-        <thead><tr><th>Slug</th><th>Destination</th><th class="num">Clicks</th><th>Created</th></tr></thead>
+        <thead><tr><th>Slug</th><th>Destination</th><th class="num">Clicks</th><th>Created</th><th>Link</th></tr></thead>
         <tbody id="linksBody"></tbody>
       </table>
       <div id="linksEmpty" class="empty" style="display:none">No links yet — create one above.</div>
@@ -332,10 +339,30 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       <div id="clickPanelBody"></div>
     </div>
   </div>
+
+  <div class="overlay" id="deleteOverlay" onclick="if(event.target===this)hideDeleteOverlay()">
+    <div class="panel">
+      <span class="panel-close" onclick="hideDeleteOverlay()">✕ close</span>
+      <div class="panel-section">
+        <h3>Delete link</h3>
+        <div id="deleteConfirmText" style="margin-bottom:10px; color:var(--fg-bright); font-size:0.85rem;"></div>
+        <input id="deleteConfirmInput" placeholder="Type the slug to confirm deletion" />
+        <div id="deleteConfirmMsg" class="msg"></div>
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="secondary" onclick="hideDeleteOverlay()">Cancel</button>
+          <button class="danger" onclick="executeDelete()">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 let currentLinkId = null;
+let currentUsername = null;
+let currentPlanTier = null;
+let currentLinkCount = 0;
+let currentDeleteSlug = null;
 
 function formatNumber(n) { return Number(n || 0).toLocaleString(); }
 
@@ -362,11 +389,12 @@ if ('serviceWorker' in navigator) {
 async function createLink() {
   const slug = document.getElementById('slug').value;
   const destination_url = document.getElementById('destUrl').value;
+  const show_preview = document.getElementById('showPreview').checked;
   const msg = document.getElementById('createMsg');
   try {
     const res = await fetch('/api/links', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug, destination_url }),
+      body: JSON.stringify({ slug, destination_url, show_preview }),
     });
     const data = await res.json();
     msg.textContent = res.ok ? 'created: /' + data.slug : (data.error || 'failed');
@@ -375,19 +403,84 @@ async function createLink() {
   } catch (e) { msg.textContent = 'network error'; msg.className = 'msg error'; }
 }
 
+async function claimUsername() {
+  const usernameInput = document.getElementById('usernameInput');
+  const msg = document.getElementById('usernameMsg');
+  try {
+    const res = await fetch('/api/username', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: usernameInput.value }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msg.textContent = '';
+      msg.className = 'msg';
+      await loadLinks();
+    } else {
+      msg.textContent = data.error || 'failed';
+      msg.className = 'msg error';
+    }
+  } catch (e) {
+    msg.textContent = 'network error';
+    msg.className = 'msg error';
+  }
+}
+
 async function loadLinks() {
-  const res = await fetch('/api/links');
-  if (!res.ok) {
+  const meRes = await fetch('/api/me');
+  if (!meRes.ok) {
+    currentUsername = null;
+    currentPlanTier = null;
+    currentLinkCount = 0;
     document.getElementById('login').style.display = 'block';
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('detail').style.display = 'none';
+    document.getElementById('usernamePrompt').style.display = 'none';
     return;
   }
+
+  const me = await meRes.json();
+  currentUsername = me.username;
+  currentPlanTier = me.plan_tier;
+
   document.getElementById('login').style.display = 'none';
+
+  if (!currentUsername) {
+    document.getElementById('usernamePrompt').style.display = 'block';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('detail').style.display = 'none';
+    document.getElementById('usernameMsg').textContent = '';
+    document.getElementById('usernameMsg').className = 'msg';
+    document.getElementById('freeTierMsg').style.display = 'none';
+    return;
+  }
+
+  const res = await fetch('/api/links');
+  if (!res.ok) {
+    currentLinkCount = 0;
+    document.getElementById('login').style.display = 'block';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('detail').style.display = 'none';
+    document.getElementById('usernamePrompt').style.display = 'none';
+    return;
+  }
+
+  const data = await res.json();
+  currentLinkCount = data.link_count || 0;
+
+  document.getElementById('usernamePrompt').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('detail').style.display = 'none';
 
-  const data = await res.json();
+  const freeTierMsg = document.getElementById('freeTierMsg');
+  if (data.plan_tier === 'free') {
+    freeTierMsg.textContent = data.link_count + ' of 3 free links used';
+    freeTierMsg.style.display = 'block';
+  } else {
+    freeTierMsg.textContent = '';
+    freeTierMsg.style.display = 'none';
+  }
+
   const body = document.getElementById('linksBody');
   body.innerHTML = '';
   document.getElementById('linksEmpty').style.display = data.links.length ? 'none' : 'block';
@@ -396,11 +489,22 @@ async function loadLinks() {
     const tr = document.createElement('tr');
     tr.className = 'link-row';
     const created = new Date(link.created_at).toLocaleDateString();
+    const copyOnclick = "event.stopPropagation(); copyLink('" + (currentUsername || '') + "', '" + link.slug + "')";
     tr.innerHTML = '<td>/' + link.slug + '</td><td>' + link.destination_url.slice(0, 40) +
-      '</td><td class="num">' + formatNumber(link.total_clicks) + '</td><td>' + created + '</td>';
+      '</td><td class="num">' + formatNumber(link.total_clicks) + '</td><td>' + created + '</td>' +
+      '<td><button onclick="' + copyOnclick + '">Copy</button></td>';
     tr.onclick = () => openDetail(link.id);
     body.appendChild(tr);
   }
+}
+
+function copyLink(username, slug) {
+  const url = 'https://snarelink.me/' + username + '/' + slug;
+  navigator.clipboard.writeText(url).then(() => {
+    alert('Copied: ' + url);
+  }).catch(() => {
+    prompt('Copy this link:', url);
+  });
 }
 
 function backToList() { loadLinks(); }
@@ -427,7 +531,7 @@ async function openDetail(linkId) {
   const summary = await summaryRes.json();
   const clicksData = await clicksRes.json();
 
-  document.getElementById('detailSlug').textContent = '/' + summary.slug;
+  document.getElementById('detailSlug').textContent = currentUsername + '/' + summary.slug;
   document.getElementById('detailDest').textContent = summary.destination_url;
 
   const botScoreClass = summary.avg_bot_score >= 70 ? '' : 'warn';
@@ -622,11 +726,37 @@ async function saveEdit() {
 }
 
 async function confirmDelete() {
-  const typed = prompt('Type the slug shown above to confirm deletion:');
-  const slugShown = document.getElementById('detailSlug').textContent.replace('/', '');
-  if (typed !== slugShown) { alert('Did not match — deletion cancelled.'); return; }
+  currentDeleteSlug = document.getElementById('detailSlug').textContent.trim();
+  document.getElementById('deleteConfirmText').textContent = 'Type ' + currentDeleteSlug + ' to confirm deletion';
+  document.getElementById('deleteConfirmInput').value = '';
+  document.getElementById('deleteConfirmMsg').textContent = '';
+  document.getElementById('deleteConfirmMsg').className = 'msg';
+  document.getElementById('deleteOverlay').style.display = 'flex';
+}
+
+function hideDeleteOverlay() {
+  document.getElementById('deleteOverlay').style.display = 'none';
+  document.getElementById('deleteConfirmMsg').textContent = '';
+  document.getElementById('deleteConfirmMsg').className = 'msg';
+}
+
+async function executeDelete() {
+  const typed = document.getElementById('deleteConfirmInput').value.trim();
+  const msg = document.getElementById('deleteConfirmMsg');
+  if (typed !== currentDeleteSlug) {
+    msg.textContent = 'Slug did not match.';
+    msg.className = 'msg error';
+    return;
+  }
+
   const res = await fetch('/api/links/' + currentLinkId, { method: 'DELETE' });
-  if (res.ok) { loadLinks(); } else { alert('Delete failed.'); }
+  if (res.ok) {
+    hideDeleteOverlay();
+    loadLinks();
+  } else {
+    msg.textContent = 'Delete failed.';
+    msg.className = 'msg error';
+  }
 }
 
 loadLinks();
