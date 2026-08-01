@@ -54,14 +54,15 @@ export async function handleGetMe(request: Request, env: Env): Promise<Response>
   const user = await getUserFromRequest(request, env);
   if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
 
-  const userRow = await env.link_tracker_db
-    .prepare('SELECT username, plan_tier FROM users WHERE id = ?')
+  const row = await env.link_tracker_db
+    .prepare('SELECT username, plan_tier, email FROM users WHERE id = ?')
     .bind(user.id)
-    .first<{ username: string | null; plan_tier: string }>();
+    .first<{ username: string | null; plan_tier: string; email: string }>();
 
   return new Response(JSON.stringify({
-    username: userRow?.username ?? null,
-    plan_tier: userRow?.plan_tier ?? 'free',
+    username: row?.username ?? null,
+    plan_tier: row?.plan_tier ?? 'free',
+    email: row?.email ?? null,
   }), {
     headers: { 'content-type': 'application/json' },
   });

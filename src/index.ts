@@ -1,12 +1,19 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { Ai } from "@cloudflare/ai";
+
 import { handleRedirect } from './routes/redirect';
 import { handleLogin, handleVerify } from './routes/auth';
+import { handleChat } from './routes/chat';
 import {
-  handleListLinks, handleCreateLink, handleUpdateLink, handleDeleteLink,
+  handleListLinks,
+  handleCreateLink,
+  handleUpdateLink,
+  handleDeleteLink,
   handleSetUsername,
   handleGetMe,
-  handleGetLinkSummary, handleGetLinkClicks,
+  handleGetLinkSummary,
+  handleGetLinkClicks,
 } from './routes/links';
 import { handleEnrich } from './routes/enrich';
 import { serveDashboard } from './routes/dashboard';
@@ -17,6 +24,7 @@ import { handleScheduled } from './scheduled';
 export interface Env {
   link_tracker_db: D1Database;
   RESEND_API_KEY: string;
+  AI: Ai;
 }
 
 export default {
@@ -28,6 +36,7 @@ export default {
     if (url.pathname === '/api/verify') return handleVerify(request, env);
     if (url.pathname === '/api/username') return handleSetUsername(request, env);
     if (url.pathname === '/api/me') return handleGetMe(request, env);
+    if (url.pathname === '/api/chat') return handleChat(request, env);
     if (url.pathname === '/manifest.json') return serveManifest();
     if (url.pathname === '/sw.js') return serveServiceWorker();
 
@@ -47,7 +56,9 @@ export default {
     }
 
     if (url.pathname === '/api/links') {
-      return request.method === 'POST' ? handleCreateLink(request, env) : handleListLinks(request, env);
+      return request.method === 'POST'
+        ? handleCreateLink(request, env)
+        : handleListLinks(request, env);
     }
 
     const pathParts = url.pathname.slice(1).split('/');

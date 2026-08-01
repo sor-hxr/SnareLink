@@ -79,6 +79,184 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     100% { box-shadow: 0 0 0 0 rgba(52,211,153,0); }
   }
 
+  /* ambient background drift, very slow and quiet, behind the login page only */
+  #login { position: relative; }
+  #login::before {
+    content: ''; position: fixed; inset: -20%; pointer-events: none; z-index: -1;
+    background: radial-gradient(ellipse 60% 40% at 20% 10%, rgba(91,127,255,0.10), transparent 55%),
+                radial-gradient(ellipse 50% 35% at 85% 30%, rgba(52,211,153,0.05), transparent 60%);
+    animation: driftGlow 22s ease-in-out infinite alternate;
+  }
+  @keyframes driftGlow { from { transform: translate(0,0); } to { transform: translate(-3%, 2%); } }
+  @media (prefers-reduced-motion: reduce) { #login::before { animation: none; } }
+
+  .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; margin: 40px 0 56px; }
+  @media (max-width: 860px) { .hero-grid { grid-template-columns: 1fr; gap: 32px; } }
+
+  .hero-eyebrow {
+    font-family: var(--font-mono); font-size: 0.72rem; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+    opacity: 0; animation: fadeUp 0.6s ease forwards; animation-delay: 0.05s;
+  }
+  .hero-eyebrow-line { width: 20px; height: 1px; background: var(--accent); display: inline-block; }
+
+  .hero-title { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; font-size: clamp(2rem, 4vw, 2.9rem); line-height: 1.1; margin: 0 0 18px; color: var(--fg-bright); }
+  .hero-title .line { display: block; overflow: hidden; }
+  .hero-title .line span { display: inline-block; opacity: 0; transform: translateY(110%); animation: lineUp 0.65s cubic-bezier(.2,.8,.2,1) forwards; }
+  .hero-title .line:nth-child(1) span { animation-delay: 0.12s; }
+  .hero-title .line:nth-child(2) span { animation-delay: 0.24s; }
+  .hero-accent { color: var(--accent); }
+
+  .hero-sub { color: var(--fg-dim); font-size: 1rem; line-height: 1.6; max-width: 440px; margin: 0 0 20px; opacity: 0; animation: fadeUp 0.6s ease forwards; animation-delay: 0.4s; }
+
+  .hero-features { display: flex; flex-direction: column; gap: 10px; max-width: 440px; opacity: 0; animation: fadeUp 0.6s ease forwards; animation-delay: 0.5s; }
+  .hero-feature { display: flex; gap: 10px; font-size: 0.82rem; color: var(--fg-dim); }
+  .hero-feature-icon { color: var(--accent); font-size: 1.05rem; flex-shrink: 0; }
+  .hero-feature strong { color: var(--fg-bright); font-family: var(--font-display); font-weight: 600; font-size: 0.85rem; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes lineUp { to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-title .line span, .hero-eyebrow, .hero-sub, .hero-features { animation: none !important; opacity: 1 !important; transform: none !important; }
+  }
+
+  /* live click feed — the hero's signature element, demonstrates the product instead of describing it */
+  .feed-panel { background: var(--bg-panel); border: 1px solid var(--border-soft); border-radius: 14px; overflow: hidden; box-shadow: 0 30px 70px rgba(0,0,0,0.4); opacity: 0; animation: fadeUp 0.7s ease forwards; animation-delay: 0.3s; }
+  .feed-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid var(--border-soft); background: var(--bg-elevated); }
+  .feed-head-title { font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.08em; display: flex; align-items: center; gap: 8px; }
+  .feed-dots { display: flex; gap: 5px; }
+  .feed-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+  .feed-stat { font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-dim); }
+  .feed-stat b { color: var(--fg-bright); font-weight: 500; }
+  .feed-body { height: 300px; overflow: hidden; position: relative; padding: 6px 0; }
+  .feed-row { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-family: var(--font-mono); font-size: 0.78rem; border-bottom: 1px solid var(--border-soft); animation: rowIn 0.4s ease forwards; }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .feed-row { animation: none; } }
+  .feed-row .loc { color: var(--fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .feed-row .loc .ua { color: var(--fg-dim); margin-left: 6px; }
+  .feed-row .badge { font-size: 0.68rem; padding: 2px 8px; border-radius: 20px; font-weight: 500; flex-shrink: 0; }
+  .feed-row.real .badge { background: var(--good-dim); color: var(--good); }
+  .feed-row.flagged { background: var(--danger-dim); }
+  .feed-row.flagged .loc { color: var(--fg-dim); text-decoration: line-through; text-decoration-color: rgba(242,85,90,0.5); }
+  .feed-row.flagged .badge { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(242,85,90,0.3); }
+  .feed-foot { padding: 12px 16px; border-top: 1px solid var(--border-soft); background: var(--bg-elevated); display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg-dim); }
+  .feed-foot .good-txt { color: var(--good); }
+  .feed-foot .danger-txt { color: var(--danger); }
+
+  .chat-fab {
+    position: fixed; bottom: 24px; right: 24px; z-index: 40;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 20px rgba(91,127,255,0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .chat-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(91,127,255,0.45); }
+  .chat-fab svg { width: 24px; height: 24px; }
+  .chat-fab .fab-dot {
+    position: absolute; top: 6px; right: 6px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--good); border: 2px solid var(--bg);
+  }
+
+  .chat-panel {
+    position: fixed; bottom: 24px; right: 24px; z-index: 50;
+    width: 360px; max-width: calc(100vw - 32px);
+    height: 520px; max-height: calc(100vh - 48px);
+    background: var(--bg-panel); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    display: flex; flex-direction: column; overflow: hidden;
+    animation: chatPanelIn 0.18s ease;
+  }
+  @keyframes chatPanelIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .chat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-elevated); flex-shrink: 0;
+  }
+  .chat-header-title { display: flex; align-items: center; gap: 9px; }
+  .chat-header-title span.chat-header-name {
+    font-family: var(--font-display); font-weight: 600; font-size: 0.92rem; color: var(--fg-bright);
+  }
+  .chat-header-sub { font-size: 0.68rem; color: var(--fg-dim); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
+  .chat-close {
+    cursor: pointer; color: var(--fg-dim); font-size: 0.78rem;
+    padding: 4px 8px; border-radius: 6px; transition: background 0.12s, color 0.12s;
+  }
+  .chat-close:hover { background: var(--bg-hover); color: var(--fg-bright); }
+
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .chat-messages::-webkit-scrollbar { width: 6px; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .chat-empty { color: var(--fg-dim); font-size: 0.8rem; text-align: center; margin: auto; padding: 0 12px; }
+
+  .msg-bubble {
+    max-width: 82%; padding: 9px 12px; border-radius: 12px;
+    font-size: 0.85rem; line-height: 1.45; word-wrap: break-word; white-space: pre-wrap;
+    animation: bubbleIn 0.15s ease;
+  }
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .msg-bubble.user {
+    align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 3px;
+  }
+  .msg-bubble.assistant {
+    align-self: flex-start; background: var(--bg-elevated); color: var(--fg);
+    border: 1px solid var(--border-soft); border-bottom-left-radius: 3px;
+  }
+  .msg-bubble.error {
+    align-self: flex-start; background: var(--danger-dim); color: var(--danger);
+    border: 1px solid rgba(242,85,90,0.25);
+  }
+
+  .chat-typing {
+    align-self: flex-start; display: flex; gap: 4px; padding: 10px 13px;
+    background: var(--bg-elevated); border: 1px solid var(--border-soft);
+    border-radius: 12px; border-bottom-left-radius: 3px; margin: 0 16px 12px;
+  }
+  .chat-typing span {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--fg-dim);
+    animation: typingBounce 1.1s infinite ease-in-out;
+  }
+  .chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+  .chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  .chat-input-row {
+    display: flex; align-items: flex-end; gap: 8px; padding: 12px;
+    border-top: 1px solid var(--border-soft); background: var(--bg-elevated); flex-shrink: 0;
+  }
+  #chatInput {
+    flex: 1; resize: none; max-height: 100px; min-height: 20px;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 9px;
+    color: var(--fg-bright); font-family: var(--font-body); font-size: 0.85rem;
+    padding: 8px 10px; line-height: 1.4;
+  }
+  #chatInput:focus { outline: none; border-color: var(--accent-line); }
+  .chat-send-btn {
+    width: 34px; height: 34px; border-radius: 9px; border: none; cursor: pointer;
+    background: var(--accent); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity 0.12s;
+  }
+  .chat-send-btn:disabled { opacity: 0.5; cursor: default; }
+  .chat-send-btn svg { width: 15px; height: 15px; }
+
+  @media (max-width: 480px) {
+    .chat-panel { right: 16px; bottom: 16px; width: calc(100vw - 32px); height: calc(100vh - 100px); }
+    .chat-fab { right: 16px; bottom: 16px; }
+  }
+
   h2 {
     font-family: var(--font-display);
     color: var(--fg-bright);
@@ -101,7 +279,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   }
   input { width: 100%; margin-bottom: 10px; }
   input::placeholder { color: var(--fg-dim); }
-  input:focus, button:focus, select:focus {
+  input:focus-visible, button:focus-visible, select:focus-visible {
     outline: none; border-color: var(--accent-line);
     box-shadow: 0 0 0 3px var(--accent-dim);
   }
@@ -118,6 +296,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   button.secondary:hover { background: var(--bg-hover); color: var(--fg-bright); }
   button.danger { background: transparent; color: var(--danger); border-color: rgba(242,85,90,0.35); }
   button.danger:hover { background: var(--danger-dim); border-color: var(--danger); }
+  button.ghost { background: transparent; color: var(--fg-dim); border-color: transparent; padding: 6px 10px; font-size: 0.78rem; }
+  button.ghost:hover { background: var(--bg-hover); color: var(--fg-bright); border-color: transparent; }
 
   .box {
     background: var(--bg-panel);
@@ -127,6 +307,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     margin-bottom: 16px;
   }
   .box > h2 { margin-bottom: 14px; }
+  #accountBox { background: transparent; border-style: dashed; }
 
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border-soft); font-size: 0.85rem; }
@@ -138,13 +319,17 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   tr.link-row { cursor: pointer; }
   tr.link-row:hover td { background: var(--bg-hover); }
   tr.vpn-row td:first-child { box-shadow: inset 3px 0 0 var(--amber); }
+  td.dest-cell { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--fg-bright); }
+  th.sortable .arrow { opacity: 0; margin-left: 4px; font-size: 0.65rem; }
+  th.sortable.active .arrow { opacity: 1; color: var(--accent); }
   .msg { color: var(--fg-dim); font-size: 0.82rem; margin-top: 8px; }
   .msg.error { color: var(--danger); }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   #dashboard, #detail { display: none; }
 
-  /* stat cards */
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .stat-card { background: var(--bg-panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 16px; }
   .stat-card .val { font-family: var(--font-display); font-size: 1.7rem; font-weight: 600; color: var(--fg-bright); font-variant-numeric: tabular-nums; }
@@ -153,13 +338,23 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   .gauge-track { height: 4px; background: var(--bg-elevated); border-radius: 2px; margin-top: 12px; overflow: hidden; }
   .gauge-fill { height: 100%; background: var(--accent); border-radius: 2px; }
   .stat-card.warn .gauge-fill { background: var(--amber); }
+  .stat-card .val { display: flex; align-items: baseline; gap: 6px; }
+  .delta { font-size: 0.72rem; font-weight: 500; }
+  .delta.up { color: var(--good); }
+  .delta.down { color: var(--danger); }
+
+  .skeleton { background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-hover) 37%, var(--bg-elevated) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: 6px; height: 14px; display: block; }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+  .slug-preview { font-family: var(--font-mono); font-size: 0.78rem; color: var(--fg-dim); margin: -4px 0 10px; min-height: 1.2em; }
+  .slug-preview strong { color: var(--accent); font-weight: 500; }
 
   .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.72rem; font-family: var(--font-mono); font-weight: 500; }
   .badge.good { background: var(--good-dim); color: var(--good); }
   .badge.warn { background: var(--amber-dim); color: var(--amber); }
   .badge.bad { background: var(--danger-dim); color: var(--danger); }
 
-  /* proportional ranked bar lists */
   .ranked-list { list-style: none; padding: 0; margin: 0; }
   .ranked-list li { padding: 9px 0; border-bottom: 1px solid var(--border-soft); }
   .ranked-list li:last-child { border-bottom: none; }
@@ -173,7 +368,6 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   .panels-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 700px) { .panels-grid { grid-template-columns: 1fr; } }
 
-  /* trend chart */
   .chart-box { grid-column: 1 / -1; }
   .chart-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
   .chart-total { font-family: var(--font-mono); color: var(--fg-dim); font-size: 0.78rem; }
@@ -192,7 +386,6 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   }
   .chart-tooltip span { color: var(--fg-dim); }
 
-  /* score cell (click log) */
   .score-cell { display: flex; align-items: center; gap: 8px; }
   .score-track { width: 46px; height: 5px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
   .score-fill { height: 100%; border-radius: 3px; }
@@ -213,7 +406,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 
   .empty { color: var(--fg-dim); text-align: center; padding: 36px; font-size: 0.85rem; }
 
-  .login-box { max-width: 380px; margin: 80px auto 0; text-align: center; }
+  .login-box { max-width: 380px; margin: 0 auto; text-align: center; }
   .login-box .brand { justify-content: center; margin-bottom: 20px; }
   .login-box p { color: var(--fg-dim); font-size: 0.88rem; margin: 0 0 18px; }
 
@@ -224,6 +417,14 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     table { display: block; overflow-x: auto; white-space: nowrap; }
     th, td { padding: 7px; font-size: 0.75rem; }
     .box { padding: 14px; }
+
+    #linksTable thead { display: none; }
+    #linksTable, #linksTable tbody, #linksTable tr, #linksTable td { display: block; width: 100%; white-space: normal; }
+    #linksTable { overflow-x: visible; }
+    #linksTable tr { background: var(--bg-elevated); border: 1px solid var(--border-soft); border-radius: var(--radius); margin-bottom: 10px; padding: 10px 12px; }
+    #linksTable td { border: none; padding: 4px 0; max-width: none; }
+    #linksTable td:first-child { font-family: var(--font-display); font-weight: 600; color: var(--fg-bright); font-size: 0.9rem; }
+    #linksTable td[data-label]::before { content: attr(data-label); display: block; font-size: 0.65rem; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
   }
 
   .click-row { cursor: pointer; }
@@ -255,6 +456,33 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   </div>
 
   <div id="login">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <div class="hero-eyebrow"><span class="hero-eyebrow-line"></span>bot &amp; vpn detection built in</div>
+        <h1 class="hero-title">
+          <span class="line"><span>Know who's <span class="hero-accent">really</span></span></span>
+          <span class="line"><span>clicking.</span></span>
+        </h1>
+        <p class="hero-sub">Every click gets scored the moment it happens — bots, VPNs, and click farms flagged automatically, so the numbers in your dashboard mean something.</p>
+        <div class="hero-features">
+          <div class="hero-feature"><span class="hero-feature-icon">◈</span><div><strong>Bot-aware scoring</strong><br>Every click gets a confidence score, with the exact signals behind it.</div></div>
+          <div class="hero-feature"><span class="hero-feature-icon">◈</span><div><strong>Real geography &amp; device data</strong><br>Country, city, ISP, browser, OS — not just a raw click count.</div></div>
+          <div class="hero-feature"><span class="hero-feature-icon">◈</span><div><strong>Your links, your name</strong><br>Claim a username, share clean branded links instantly.</div></div>
+        </div>
+      </div>
+
+      <div class="feed-panel" id="feedPanel">
+        <div class="feed-head">
+          <div class="feed-head-title"><span class="feed-dots"><span></span><span></span><span></span></span>live click feed</div>
+          <div class="feed-stat"><b id="feedTotal">0</b> today</div>
+        </div>
+        <div class="feed-body" id="feedBody"></div>
+        <div class="feed-foot">
+          <span><span class="good-txt" id="feedRealPct">—</span> real</span>
+          <span><span class="danger-txt" id="feedFlaggedPct">—</span> flagged &amp; blocked</span>
+        </div>
+      </div>
+    </div>
     <div class="box login-box">
       <div class="brand"><span class="brand-mark"><span></span><span></span><span></span></span><span class="brand-name">SnareLink</span></div>
       <p>Sign in to manage your links</p>
@@ -267,12 +495,26 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   <div id="usernamePrompt" class="box" style="display:none"><h2>Choose a username</h2><input id="usernameInput" placeholder="yourname" /><button onclick="claimUsername()">Claim</button><div id="usernameMsg" class="msg"></div></div>
 
   <div id="dashboard">
+    <div class="box" id="accountBox">
+      <h2>Account</h2>
+      <div class="panel-row"><span class="k">Username</span><span class="v" id="acctUsername"></span></div>
+      <div class="panel-row"><span class="k">Email</span><span class="v" id="acctEmail"></span></div>
+      <div class="panel-row"><span class="k">Plan</span><span class="v" id="acctPlan"></span></div>
+      <button class="secondary" onclick="startUsernameChange()" style="margin-top:10px">Change username</button>
+      <div id="usernameChangeBox" style="display:none; margin-top:10px">
+        <input id="newUsernameInput" placeholder="new-username" />
+        <button onclick="saveUsernameChange()">Save</button>
+        <div id="usernameChangeMsg" class="msg"></div>
+      </div>
+    </div>
+
     <div class="box">
       <h2>Create link</h2>
       <div id="freeTierMsg" class="msg" style="display:none"></div>
       <div style="margin-top:14px">
-        <input id="slug" placeholder="custom-slug" />
+        <input id="slug" placeholder="custom-slug" oninput="updateSlugPreview()" />
         <input id="destUrl" placeholder="https://destination-url.com" />
+        <div class="slug-preview" id="slugPreview"></div>
         <label style="display:flex; align-items:center; gap:8px; margin: 4px 0 10px; font-size:0.85rem; color: var(--fg);">
           <input type="checkbox" id="showPreview" style="width:auto; margin:0" />
           <span>Show a preview page before redirecting</span>
@@ -285,10 +527,16 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     <div class="box">
       <h2>Your links</h2>
       <table id="linksTable">
-        <thead><tr><th>Slug</th><th>Destination</th><th class="num">Clicks</th><th>Created</th><th>Link</th></tr></thead>
+        <thead><tr>
+          <th class="sortable" data-sort="slug" onclick="sortLinks('slug')">Slug <span class="arrow">▾</span></th>
+          <th>Destination</th>
+          <th class="num sortable" data-sort="total_clicks" onclick="sortLinks('total_clicks')">Clicks <span class="arrow">▾</span></th>
+          <th class="sortable active" data-sort="created_at" onclick="sortLinks('created_at')">Created <span class="arrow">▾</span></th>
+          <th>Link</th>
+        </tr></thead>
         <tbody id="linksBody"></tbody>
       </table>
-      <div id="linksEmpty" class="empty" style="display:none">No links yet — create one above.</div>
+      <div id="linksEmpty" class="empty" style="display:none">No links yet — create your first one above to start tracking clicks.</div>
     </div>
   </div>
 
@@ -357,12 +605,48 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   </div>
 </div>
 
+<button id="chatToggleBtn" class="chat-fab" style="display:none" onclick="toggleChat()" aria-label="Support chat">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+  <span class="fab-dot"></span>
+</button>
+
+<div id="chatPanel" class="chat-panel" style="display:none">
+  <div class="chat-header">
+    <div class="chat-header-title">
+      <span class="brand-mark"><span></span><span></span><span></span></span>
+      <div>
+        <div class="chat-header-name">Support</div>
+        <div class="chat-header-sub">ask about snarelink</div>
+      </div>
+    </div>
+    <span class="chat-close" onclick="toggleChat()">✕ close</span>
+  </div>
+  <div id="chatMessages" class="chat-messages">
+    <div class="chat-empty" id="chatEmpty">Ask me anything about links, analytics, or your account.</div>
+  </div>
+  <div id="chatTyping" class="chat-typing" style="display:none"><span></span><span></span><span></span></div>
+  <div class="chat-input-row">
+    <textarea id="chatInput" rows="1" placeholder="Type a message..." onkeydown="handleChatKeydown(event)" oninput="autoGrowChatInput(this)"></textarea>
+    <button id="chatSendBtn" class="chat-send-btn" onclick="sendChatMessage()" aria-label="Send">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
 <script>
 let currentLinkId = null;
 let currentUsername = null;
 let currentPlanTier = null;
 let currentLinkCount = 0;
 let currentDeleteSlug = null;
+let currentLinks = [];
+let currentSort = { field: 'created_at', dir: 'desc' };
+
+function updateSlugPreview() {
+  const slug = document.getElementById('slug').value.trim();
+  const preview = document.getElementById('slugPreview');
+  preview.innerHTML = slug ? 'will be: <strong>snarelink.me/' + (currentUsername || 'you') + '/' + slug + '</strong>' : '';
+}
 
 function formatNumber(n) { return Number(n || 0).toLocaleString(); }
 
@@ -399,7 +683,7 @@ async function createLink() {
     const data = await res.json();
     msg.textContent = res.ok ? 'created: /' + data.slug : (data.error || 'failed');
     msg.className = res.ok ? 'msg' : 'msg error';
-    if (res.ok) { document.getElementById('slug').value = ''; document.getElementById('destUrl').value = ''; loadLinks(); }
+    if (res.ok) { document.getElementById('slug').value = ''; document.getElementById('destUrl').value = ''; updateSlugPreview(); loadLinks(); }
   } catch (e) { msg.textContent = 'network error'; msg.className = 'msg error'; }
 }
 
@@ -426,6 +710,34 @@ async function claimUsername() {
   }
 }
 
+function startUsernameChange() {
+  document.getElementById('usernameChangeBox').style.display = 'block';
+}
+
+async function saveUsernameChange() {
+  const newUsername = document.getElementById('newUsernameInput').value.trim();
+  const msg = document.getElementById('usernameChangeMsg');
+  if (!confirm('Changing your username will break any links you already shared with the old one. Continue?')) return;
+  try {
+    const res = await fetch('/api/username', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: newUsername }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msg.textContent = '';
+      document.getElementById('usernameChangeBox').style.display = 'none';
+      loadLinks();
+    } else {
+      msg.textContent = data.error || 'failed';
+      msg.className = 'msg error';
+    }
+  } catch (e) {
+    msg.textContent = 'network error';
+    msg.className = 'msg error';
+  }
+}
+
 async function loadLinks() {
   const meRes = await fetch('/api/me');
   if (!meRes.ok) {
@@ -436,6 +748,7 @@ async function loadLinks() {
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('detail').style.display = 'none';
     document.getElementById('usernamePrompt').style.display = 'none';
+    setChatAvailable(false);
     return;
   }
 
@@ -452,9 +765,11 @@ async function loadLinks() {
     document.getElementById('usernameMsg').textContent = '';
     document.getElementById('usernameMsg').className = 'msg';
     document.getElementById('freeTierMsg').style.display = 'none';
+    setChatAvailable(false);
     return;
   }
 
+  showLinksSkeleton();
   const res = await fetch('/api/links');
   if (!res.ok) {
     currentLinkCount = 0;
@@ -462,6 +777,7 @@ async function loadLinks() {
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('detail').style.display = 'none';
     document.getElementById('usernamePrompt').style.display = 'none';
+    setChatAvailable(false);
     return;
   }
 
@@ -471,6 +787,11 @@ async function loadLinks() {
   document.getElementById('usernamePrompt').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('detail').style.display = 'none';
+  setChatAvailable(true);
+
+  document.getElementById('acctUsername').textContent = me.username || '(not set)';
+  document.getElementById('acctEmail').textContent = me.email || '';
+  document.getElementById('acctPlan').textContent = me.plan_tier || 'free';
 
   const freeTierMsg = document.getElementById('freeTierMsg');
   if (data.plan_tier === 'free') {
@@ -481,21 +802,65 @@ async function loadLinks() {
     freeTierMsg.style.display = 'none';
   }
 
-  const body = document.getElementById('linksBody');
-  body.innerHTML = '';
-  document.getElementById('linksEmpty').style.display = data.links.length ? 'none' : 'block';
+  currentLinks = data.links;
+  renderLinksTable();
+}
 
-  for (const link of data.links) {
+function renderLinksTable() {
+  const body = document.getElementById('linksBody');
+  const links = sortLinksList(currentLinks);
+  body.innerHTML = '';
+  document.getElementById('linksEmpty').style.display = links.length ? 'none' : 'block';
+
+  for (const link of links) {
     const tr = document.createElement('tr');
     tr.className = 'link-row';
     const created = new Date(link.created_at).toLocaleDateString();
     const copyOnclick = "event.stopPropagation(); copyLink('" + (currentUsername || '') + "', '" + link.slug + "')";
-    tr.innerHTML = '<td>/' + link.slug + '</td><td>' + link.destination_url.slice(0, 40) +
-      '</td><td class="num">' + formatNumber(link.total_clicks) + '</td><td>' + created + '</td>' +
-      '<td><button onclick="' + copyOnclick + '">Copy</button></td>';
+    tr.innerHTML = '<td data-label="Slug">/' + link.slug + '</td>' +
+      '<td class="dest-cell" data-label="Destination" title="' + link.destination_url + '">' + link.destination_url + '</td>' +
+      '<td class="num" data-label="Clicks">' + formatNumber(link.total_clicks) + '</td>' +
+      '<td data-label="Created">' + created + '</td>' +
+      '<td><button class="ghost" onclick="' + copyOnclick + '">Copy</button></td>';
     tr.onclick = () => openDetail(link.id);
     body.appendChild(tr);
   }
+}
+
+function sortLinksList(links) {
+  const sorted = [...links].sort((a, b) => {
+    let av = a[currentSort.field], bv = b[currentSort.field];
+    if (currentSort.field === 'created_at') { av = new Date(av).getTime(); bv = new Date(bv).getTime(); }
+    if (typeof av === 'string') return currentSort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return currentSort.dir === 'asc' ? av - bv : bv - av;
+  });
+  return sorted;
+}
+
+function sortLinks(field) {
+  if (currentSort.field === field) {
+    currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort = { field, dir: field === 'created_at' || field === 'total_clicks' ? 'desc' : 'asc' };
+  }
+  document.querySelectorAll('#linksTable th.sortable').forEach(th => {
+    th.classList.toggle('active', th.dataset.sort === field);
+    const arrow = th.querySelector('.arrow');
+    if (th.dataset.sort === field) arrow.textContent = currentSort.dir === 'asc' ? '▴' : '▾';
+  });
+  renderLinksTable();
+}
+
+function showLinksSkeleton() {
+  const body = document.getElementById('linksBody');
+  document.getElementById('linksEmpty').style.display = 'none';
+  body.innerHTML = [1, 2, 3].map(() =>
+    '<tr><td><div class="skeleton" style="width:70px"></div></td>' +
+    '<td><div class="skeleton" style="width:160px"></div></td>' +
+    '<td class="num"><div class="skeleton" style="width:40px;margin-left:auto"></div></td>' +
+    '<td><div class="skeleton" style="width:80px"></div></td>' +
+    '<td><div class="skeleton" style="width:50px"></div></td></tr>'
+  ).join('');
 }
 
 function copyLink(username, slug) {
@@ -535,8 +900,10 @@ async function openDetail(linkId) {
   document.getElementById('detailDest').textContent = summary.destination_url;
 
   const botScoreClass = summary.avg_bot_score >= 70 ? '' : 'warn';
+  const trend = summary.trend || [];
+  const clickDelta = trend.length > 1 ? trend[trend.length - 1].count - trend[trend.length - 2].count : 0;
   document.getElementById('statGrid').innerHTML =
-    statCard(summary.total_clicks, 'Total clicks') +
+    statCard(summary.total_clicks, 'Total clicks', '', clickDelta) +
     statCard(summary.unique_visitors, 'Unique visitors') +
     gaugeCard(summary.avg_bot_score, 'Avg bot score', 100, botScoreClass) +
     gaugeCard(summary.vpn_count, 'VPN/proxy clicks', Math.max(1, summary.total_clicks), summary.vpn_count > 0 ? 'warn' : '');
@@ -556,11 +923,12 @@ async function openDetail(linkId) {
     const inAppTag = c.is_in_app_browser ? ' <span class="badge warn">IN-APP</span>' : '';
     return '<tr class="click-row ' + (c.is_vpn ? 'vpn-row' : '') + '" onclick="openClickPanel(' + i + ')"><td>' + time + '</td><td>' + loc + '</td><td>' + c.browser + ' / ' + c.os + (c.os_version ? ' ' + c.os_version : '') + inAppTag + '</td>' +
       '<td>' + c.isp + vpnTag + '</td><td class="num">#' + c.visit_number + '</td><td class="num">' + scoreCell(c.bot_score) + '</td></tr>';
-  }).join('') || '<tr><td colspan="6" class="empty">no clicks yet</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="empty">No clicks in this link&#39;s history yet — share it to see activity here.</td></tr>';
 }
 
-function statCard(val, label, extraClass) {
-  return '<div class="stat-card ' + (extraClass || '') + '"><div class="val">' + formatNumber(val) + '</div><div class="lbl">' + label + '</div></div>';
+function statCard(val, label, extraClass, delta) {
+  const deltaHtml = delta ? '<span class="delta ' + (delta > 0 ? 'up' : 'down') + '">' + (delta > 0 ? '▲' : '▼') + ' ' + Math.abs(delta) + '</span>' : '';
+  return '<div class="stat-card ' + (extraClass || '') + '"><div class="val">' + formatNumber(val) + deltaHtml + '</div><div class="lbl">' + label + '</div></div>';
 }
 
 function gaugeCard(val, label, max, extraClass) {
@@ -758,6 +1126,155 @@ async function executeDelete() {
     msg.className = 'msg error';
   }
 }
+
+let chatOpen = false;
+let chatHistoryLoaded = false;
+let chatSending = false;
+
+function setChatAvailable(available) {
+  document.getElementById('chatToggleBtn').style.display = available ? 'flex' : 'none';
+  if (!available) {
+    chatOpen = false;
+    chatHistoryLoaded = false;
+    document.getElementById('chatPanel').style.display = 'none';
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function appendChatBubble(role, content) {
+  const messages = document.getElementById('chatMessages');
+  const empty = document.getElementById('chatEmpty');
+  if (empty) empty.remove();
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble ' + role;
+  bubble.innerHTML = escapeHtml(content).replace(/\\n/g, '<br>');
+  messages.appendChild(bubble);
+  scrollChatToBottom();
+}
+
+function scrollChatToBottom() {
+  const messages = document.getElementById('chatMessages');
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function setChatTyping(visible) {
+  document.getElementById('chatTyping').style.display = visible ? 'flex' : 'none';
+  if (visible) scrollChatToBottom();
+}
+
+async function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById('chatPanel').style.display = chatOpen ? 'flex' : 'none';
+  if (chatOpen) {
+    if (!chatHistoryLoaded) await loadChatHistory();
+    document.getElementById('chatInput').focus();
+    scrollChatToBottom();
+  }
+}
+
+async function loadChatHistory() {
+  chatHistoryLoaded = true;
+  try {
+    const res = await fetch('/api/chat');
+    if (!res.ok) return;
+    const data = await res.json();
+    const messages = data.messages || [];
+    if (messages.length) {
+      const empty = document.getElementById('chatEmpty');
+      if (empty) empty.remove();
+      for (const m of messages) appendChatBubble(m.role, m.content);
+    }
+  } catch (e) {
+  }
+}
+
+function handleChatKeydown(event) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    sendChatMessage();
+  }
+}
+
+function autoGrowChatInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const message = input.value.trim();
+  if (!message || chatSending) return;
+
+  chatSending = true;
+  document.getElementById('chatSendBtn').disabled = true;
+  appendChatBubble('user', message);
+  input.value = '';
+  input.style.height = 'auto';
+  setChatTyping(true);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    const data = await res.json().catch(() => null);
+    setChatTyping(false);
+    if (res.ok && data && data.reply) {
+      appendChatBubble('assistant', data.reply);
+    } else {
+      appendChatBubble('error', (data && data.error) || 'Something went wrong. Please try again.');
+    }
+  } catch (e) {
+    setChatTyping(false);
+    appendChatBubble('error', 'Network error. Please try again.');
+  } finally {
+    chatSending = false;
+    document.getElementById('chatSendBtn').disabled = false;
+  }
+}
+
+// Decorative simulated feed for the pre-login hero — no network calls, just demonstrates the concept live.
+(function () {
+  const locations = [
+    ['New York, US', 'Chrome / macOS'], ['London, UK', 'Safari / iOS'], ['Berlin, DE', 'Firefox / Windows'],
+    ['Toronto, CA', 'Chrome / Android'], ['Sydney, AU', 'Safari / macOS'], ['Tokyo, JP', 'Chrome / Windows'],
+    ['Sao Paulo, BR', 'Chrome / Android'], ['Paris, FR', 'Edge / Windows'], ['Singapore, SG', 'Safari / iOS'],
+    ['Mumbai, IN', 'Chrome / Android'],
+  ];
+  const flaggedReasons = ['datacenter IP', 'headless UA', 'no referrer + rapid burst', 'known proxy exit node'];
+  let total = 0, real = 0, flagged = 0;
+  const MAX_ROWS = 7;
+
+  function addFeedRow() {
+    const feedBody = document.getElementById('feedBody');
+    const loginVisible = document.getElementById('login').style.display !== 'none';
+    if (!feedBody || !loginVisible) return;
+
+    const isFlagged = Math.random() < 0.22;
+    const [loc, ua] = locations[Math.floor(Math.random() * locations.length)];
+    total++; isFlagged ? flagged++ : real++;
+
+    const row = document.createElement('div');
+    row.className = 'feed-row ' + (isFlagged ? 'flagged' : 'real');
+    row.innerHTML = '<span class="loc">' + loc + '<span class="ua">' + ua + '</span></span>' +
+      '<span class="badge">' + (isFlagged ? flaggedReasons[Math.floor(Math.random() * flaggedReasons.length)] : 'verified') + '</span>';
+    feedBody.insertBefore(row, feedBody.firstChild);
+    while (feedBody.children.length > MAX_ROWS) feedBody.removeChild(feedBody.lastChild);
+
+    document.getElementById('feedTotal').textContent = total.toLocaleString();
+    document.getElementById('feedRealPct').textContent = Math.round((real / total) * 100) + '%';
+    document.getElementById('feedFlaggedPct').textContent = Math.round((flagged / total) * 100) + '%';
+  }
+
+  for (let i = 0; i < 5; i++) setTimeout(addFeedRow, i * 180);
+  setInterval(addFeedRow, 1700);
+})();
 
 loadLinks();
 </script>
