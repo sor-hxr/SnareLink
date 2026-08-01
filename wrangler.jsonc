@@ -3,13 +3,13 @@
   "compatibility_date": "2026-07-23",
   "main": "src/index.ts",
   "triggers": {
-    "crons": ["0 3 * * *"]
+    "crons": ["**************"]
   },
   "d1_databases": [
     {
-      "binding": "link_tracker_db",
-      "database_name": "snarelink-db",
-      "database_id": "544e4ef4-11b7-462e-9c1d-65dc48c96616"
+      "binding": "***************************",
+      "database_name": "***************************",
+      "database_id": "******************************************************"
     }
   ],
   "ai": { "binding": "AI" }
