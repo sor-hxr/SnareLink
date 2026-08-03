@@ -7,6 +7,11 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="SnareLink is a link tracker with built-in bot and VPN detection — see real click analytics, not inflated numbers.">
+<meta property="og:title" content="SnareLink — Link tracking that spots the bots">
+<meta property="og:description" content="Create short links and see who's really clicking, with bot/VPN detection built in.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://snarelink.me">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#0a0c10">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -328,7 +333,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
   .msg.error { color: var(--danger); }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  #dashboard, #detail { display: none; }
+  #login, #dashboard, #detail, #usernamePrompt, #accountView { display: none; }
 
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .stat-card { background: var(--bg-panel); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 16px; }
@@ -455,34 +460,9 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     <div class="live-pill"><span class="live-dot"></span>tracking</div>
   </div>
 
-  <div id="login">
-    <div class="hero-grid">
-      <div class="hero-copy">
-        <div class="hero-eyebrow"><span class="hero-eyebrow-line"></span>bot &amp; vpn detection built in</div>
-        <h1 class="hero-title">
-          <span class="line"><span>Know who's <span class="hero-accent">really</span></span></span>
-          <span class="line"><span>clicking.</span></span>
-        </h1>
-        <p class="hero-sub">Every click gets scored the moment it happens — bots, VPNs, and click farms flagged automatically, so the numbers in your dashboard mean something.</p>
-        <div class="hero-features">
-          <div class="hero-feature"><span class="hero-feature-icon">◈</span><div><strong>Bot-aware scoring</strong><br>Every click gets a confidence score, with the exact signals behind it.</div></div>
-          <div class="hero-feature"><span class="hero-feature-icon">◈</span><div><strong>Real geography &amp; device data</strong><br>Country, city, ISP, browser, OS — not just a raw click count.</div></div>
-          <div class="hero-feature"><span class="hero-feature-icon">◈</span><div><strong>Your links, your name</strong><br>Claim a username, share clean branded links instantly.</div></div>
-        </div>
-      </div>
+  <div id="initialLoading" style="text-align:center; padding:80px 20px; color:var(--fg-dim);">Loading…</div>
 
-      <div class="feed-panel" id="feedPanel">
-        <div class="feed-head">
-          <div class="feed-head-title"><span class="feed-dots"><span></span><span></span><span></span></span>live click feed</div>
-          <div class="feed-stat"><b id="feedTotal">0</b> today</div>
-        </div>
-        <div class="feed-body" id="feedBody"></div>
-        <div class="feed-foot">
-          <span><span class="good-txt" id="feedRealPct">—</span> real</span>
-          <span><span class="danger-txt" id="feedFlaggedPct">—</span> flagged &amp; blocked</span>
-        </div>
-      </div>
-    </div>
+  <div id="login">
     <div class="box login-box">
       <div class="brand"><span class="brand-mark"><span></span><span></span><span></span></span><span class="brand-name">SnareLink</span></div>
       <p>Sign in to manage your links</p>
@@ -501,6 +481,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       <div class="panel-row"><span class="k">Email</span><span class="v" id="acctEmail"></span></div>
       <div class="panel-row"><span class="k">Plan</span><span class="v" id="acctPlan"></span></div>
       <button class="secondary" onclick="startUsernameChange()" style="margin-top:10px">Change username</button>
+      <a href="/account" style="display:inline-block; margin-top:10px;">Manage sessions &amp; security →</a>
       <div id="usernameChangeBox" style="display:none; margin-top:10px">
         <input id="newUsernameInput" placeholder="new-username" />
         <button onclick="saveUsernameChange()">Save</button>
@@ -603,6 +584,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       </div>
     </div>
   </div>
+
+  <div style="text-align:center; margin-top:24px; font-size:0.78rem; color:var(--fg-dim);">
+    <a href="/about">About</a> · <a href="/pricing">Pricing</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+  </div>
 </div>
 
 <button id="chatToggleBtn" class="chat-fab" style="display:none" onclick="toggleChat()" aria-label="Support chat">
@@ -641,6 +626,7 @@ let currentLinkCount = 0;
 let currentDeleteSlug = null;
 let currentLinks = [];
 let currentSort = { field: 'created_at', dir: 'desc' };
+document.getElementById('chatToggleBtn').style.display = 'flex';
 
 function updateSlugPreview() {
   const slug = document.getElementById('slug').value.trim();
@@ -740,6 +726,7 @@ async function saveUsernameChange() {
 
 async function loadLinks() {
   const meRes = await fetch('/api/me');
+  document.getElementById('initialLoading').style.display = 'none';
   if (!meRes.ok) {
     currentUsername = null;
     currentPlanTier = null;
@@ -748,7 +735,6 @@ async function loadLinks() {
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('detail').style.display = 'none';
     document.getElementById('usernamePrompt').style.display = 'none';
-    setChatAvailable(false);
     return;
   }
 
@@ -765,7 +751,6 @@ async function loadLinks() {
     document.getElementById('usernameMsg').textContent = '';
     document.getElementById('usernameMsg').className = 'msg';
     document.getElementById('freeTierMsg').style.display = 'none';
-    setChatAvailable(false);
     return;
   }
 
@@ -777,7 +762,6 @@ async function loadLinks() {
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('detail').style.display = 'none';
     document.getElementById('usernamePrompt').style.display = 'none';
-    setChatAvailable(false);
     return;
   }
 
@@ -787,7 +771,6 @@ async function loadLinks() {
   document.getElementById('usernamePrompt').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   document.getElementById('detail').style.display = 'none';
-  setChatAvailable(true);
 
   document.getElementById('acctUsername').textContent = me.username || '(not set)';
   document.getElementById('acctEmail').textContent = me.email || '';
@@ -1060,7 +1043,7 @@ function openClickPanel(index) {
       '<div class="panel-row" style="margin-top:8px"><span class="k">HTTP / TLS</span><span class="v">' + (c.http_protocol || '—') + ' / ' + (c.tls_version || '—') + '</span></div>' +
     '</div>' +
     '<div class="panel-section"><div class="raw-toggle" onclick="toggleRawDump(this)">▸ raw headers</div>' +
-      '<div class="raw-dump">' + JSON.stringify(c.raw_headers, null, 2) + '</div>' +
+      '<div class="raw-dump">' + escapeHtml(JSON.stringify(c.raw_headers, null, 2)) + '</div>' +
     '</div>';
 
   document.getElementById('clickOverlay').style.display = 'flex';
@@ -1128,17 +1111,7 @@ async function executeDelete() {
 }
 
 let chatOpen = false;
-let chatHistoryLoaded = false;
 let chatSending = false;
-
-function setChatAvailable(available) {
-  document.getElementById('chatToggleBtn').style.display = available ? 'flex' : 'none';
-  if (!available) {
-    chatOpen = false;
-    chatHistoryLoaded = false;
-    document.getElementById('chatPanel').style.display = 'none';
-  }
-}
 
 function escapeHtml(str) {
   const div = document.createElement('div');
@@ -1171,25 +1144,8 @@ async function toggleChat() {
   chatOpen = !chatOpen;
   document.getElementById('chatPanel').style.display = chatOpen ? 'flex' : 'none';
   if (chatOpen) {
-    if (!chatHistoryLoaded) await loadChatHistory();
     document.getElementById('chatInput').focus();
     scrollChatToBottom();
-  }
-}
-
-async function loadChatHistory() {
-  chatHistoryLoaded = true;
-  try {
-    const res = await fetch('/api/chat');
-    if (!res.ok) return;
-    const data = await res.json();
-    const messages = data.messages || [];
-    if (messages.length) {
-      const empty = document.getElementById('chatEmpty');
-      if (empty) empty.remove();
-      for (const m of messages) appendChatBubble(m.role, m.content);
-    }
-  } catch (e) {
   }
 }
 
@@ -1210,6 +1166,8 @@ async function sendChatMessage() {
   const message = input.value.trim();
   if (!message || chatSending) return;
 
+  window.clientChatHistory = window.clientChatHistory || [];
+
   chatSending = true;
   document.getElementById('chatSendBtn').disabled = true;
   appendChatBubble('user', message);
@@ -1221,12 +1179,14 @@ async function sendChatMessage() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, history: window.clientChatHistory }),
     });
     const data = await res.json().catch(() => null);
     setChatTyping(false);
     if (res.ok && data && data.reply) {
       appendChatBubble('assistant', data.reply);
+      window.clientChatHistory.push({ role: 'user', content: message }, { role: 'assistant', content: data.reply });
+      window.clientChatHistory = window.clientChatHistory.slice(-4);
     } else {
       appendChatBubble('error', (data && data.error) || 'Something went wrong. Please try again.');
     }
@@ -1238,43 +1198,6 @@ async function sendChatMessage() {
     document.getElementById('chatSendBtn').disabled = false;
   }
 }
-
-// Decorative simulated feed for the pre-login hero — no network calls, just demonstrates the concept live.
-(function () {
-  const locations = [
-    ['New York, US', 'Chrome / macOS'], ['London, UK', 'Safari / iOS'], ['Berlin, DE', 'Firefox / Windows'],
-    ['Toronto, CA', 'Chrome / Android'], ['Sydney, AU', 'Safari / macOS'], ['Tokyo, JP', 'Chrome / Windows'],
-    ['Sao Paulo, BR', 'Chrome / Android'], ['Paris, FR', 'Edge / Windows'], ['Singapore, SG', 'Safari / iOS'],
-    ['Mumbai, IN', 'Chrome / Android'],
-  ];
-  const flaggedReasons = ['datacenter IP', 'headless UA', 'no referrer + rapid burst', 'known proxy exit node'];
-  let total = 0, real = 0, flagged = 0;
-  const MAX_ROWS = 7;
-
-  function addFeedRow() {
-    const feedBody = document.getElementById('feedBody');
-    const loginVisible = document.getElementById('login').style.display !== 'none';
-    if (!feedBody || !loginVisible) return;
-
-    const isFlagged = Math.random() < 0.22;
-    const [loc, ua] = locations[Math.floor(Math.random() * locations.length)];
-    total++; isFlagged ? flagged++ : real++;
-
-    const row = document.createElement('div');
-    row.className = 'feed-row ' + (isFlagged ? 'flagged' : 'real');
-    row.innerHTML = '<span class="loc">' + loc + '<span class="ua">' + ua + '</span></span>' +
-      '<span class="badge">' + (isFlagged ? flaggedReasons[Math.floor(Math.random() * flaggedReasons.length)] : 'verified') + '</span>';
-    feedBody.insertBefore(row, feedBody.firstChild);
-    while (feedBody.children.length > MAX_ROWS) feedBody.removeChild(feedBody.lastChild);
-
-    document.getElementById('feedTotal').textContent = total.toLocaleString();
-    document.getElementById('feedRealPct').textContent = Math.round((real / total) * 100) + '%';
-    document.getElementById('feedFlaggedPct').textContent = Math.round((flagged / total) * 100) + '%';
-  }
-
-  for (let i = 0; i < 5; i++) setTimeout(addFeedRow, i * 180);
-  setInterval(addFeedRow, 1700);
-})();
 
 loadLinks();
 </script>

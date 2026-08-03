@@ -1,4 +1,6 @@
 import type { Env } from '../index';
+import { hashIp } from '../lib/scoring';
+import { isRateLimited } from '../lib/rateLimit';
 
 const TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -6,6 +8,11 @@ const SESSION_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
+  }
+
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  if (await isRateLimited(env, `login:${ip}`, 5, 60)) {
+    return new Response(JSON.stringify({ error: 'Too many attempts. Try again shortly.' }), { status: 429 });
   }
 
   const body = await request.json<{ email?: string }>().catch(() => null);
@@ -68,26 +75,13 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   });
 
   if (!emailRes.ok) {
-    const errText = await emailRes.text();
-
-    return new Response(
-      JSON.stringify({
-        error: 'Failed to send email',
-        detail: errText,
-      }),
-      {
-        status: 502,
-        headers: {
-          'content-type': 'application/json',
-        },
-      }
-    );
+    console.error('Resend error:', await emailRes.text());
   }
 
   return new Response(
     JSON.stringify({
       ok: true,
-      message: 'Check your email for a login link',
+      message: 'If that email exists, a login link is on its way.',
     }),
     {
       status: 200,
@@ -135,12 +129,15 @@ export async function handleVerify(request: Request, env: Env): Promise<Response
 
   const sessionId = crypto.randomUUID();
   const sessionExpiry = Date.now() + SESSION_EXPIRY_MS;
+  const ua = request.headers.get('user-agent') || '';
+  const rawIp = request.headers.get('cf-connecting-ip') || '';
+  const ipHash = rawIp ? await hashIp(rawIp) : null;
 
   await env.link_tracker_db
     .prepare(
-      'INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)'
+      'INSERT INTO sessions (id, user_id, expires_at, created_at, user_agent, ip_hash, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
-    .bind(sessionId, tokenRow.user_id, sessionExpiry, Date.now())
+    .bind(sessionId, tokenRow.user_id, sessionExpiry, Date.now(), ua, ipHash, Date.now())
     .run();
 
   return new Response(null, {

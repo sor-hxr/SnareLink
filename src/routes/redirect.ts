@@ -2,6 +2,11 @@ import { computeBotScore, hashIp } from '../lib/scoring';
 import { isInAppBrowser, isChromiumBased } from '../lib/ua-parse';
 import type { Env } from '../index';
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 export async function handleRedirect(request: Request, env: Env, username: string, slug: string): Promise<Response> {
   const link = await env.link_tracker_db
     .prepare(
@@ -21,8 +26,14 @@ export async function handleRedirect(request: Request, env: Env, username: strin
   const ipHash = rawIp ? await hashIp(rawIp) : null;
   const inApp = isInAppBrowser(ua);
 
+  const SENSITIVE_HEADERS = ['authorization', 'cookie', 'x-api-key'];
   const headerSnapshot: Record<string, string> = {};
-  for (const [key, value] of request.headers.entries()) headerSnapshot[key] = value;
+  for (const [key, value] of request.headers.entries()) {
+    if (!SENSITIVE_HEADERS.includes(key.toLowerCase())) {
+      headerSnapshot[key] = value;
+    }
+  }
+  const headerJson = JSON.stringify(headerSnapshot).slice(0, 4000);
 
   const clickId = crypto.randomUUID();
 
@@ -42,16 +53,17 @@ export async function handleRedirect(request: Request, env: Env, username: strin
       cf?.clientTcpRtt || null, cf?.httpProtocol || null,
       cf?.tlsVersion || null, cf?.colo || null,
       request.headers.get('accept-language') || null,
-      ipHash, JSON.stringify(headerSnapshot),
+      ipHash, headerJson,
       inApp ? 1 : 0, JSON.stringify(reasons)
     )
     .run();
 
   if (link.show_preview) {
-    const previewHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="3;url=${link.destination_url}">
+    const safeUrl = escapeHtml(link.destination_url);
+    const previewHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="refresh" content="3;url=${safeUrl}">
     <style>body{background:#0a0c10;color:#c7cdd8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
     a{color:#5b7fff}</style></head><body>
-    <div><p>Redirecting you to:</p><p><strong>${link.destination_url}</strong></p><p><a href="${link.destination_url}">Continue now</a></p></div>
+    <div><p>Redirecting you to:</p><p><strong>${safeUrl}</strong></p><p><a href="${safeUrl}">Continue now</a></p></div>
     </body></html>`;
     return new Response(previewHtml, { headers: { 'content-type': 'text/html' } });
   }

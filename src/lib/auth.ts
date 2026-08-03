@@ -1,6 +1,6 @@
 import type { Env } from '../index';
 
-export async function getUserFromRequest(request: Request, env: Env): Promise<{ id: string; email: string } | null> {
+export async function getUserFromRequest(request: Request, env: Env): Promise<{ id: string; email: string; sessionId: string } | null> {
   const cookieHeader = request.headers.get('cookie') || '';
   const match = cookieHeader.match(/session=([^;]+)/);
   if (!match) return null;
@@ -18,6 +18,11 @@ export async function getUserFromRequest(request: Request, env: Env): Promise<{ 
 
   if (!row || row.expires_at < Date.now()) return null;
 
-  return { id: row.id, email: row.email };
+  await env.link_tracker_db
+    .prepare('UPDATE sessions SET last_seen = ? WHERE id = ?')
+    .bind(Date.now(), sessionId)
+    .run();
+
+  return { id: row.id, email: row.email, sessionId };
 }
 

@@ -1,6 +1,7 @@
 import type { Env } from '../index';
 import { getUserFromRequest } from '../lib/auth';
 import { parseUserAgent } from '../lib/ua-parse';
+import { isRateLimited } from '../lib/rateLimit';
 
 const DATACENTER_HINTS = ['amazon', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner'];
 
@@ -10,7 +11,12 @@ function normalizeUrl(url: string): string | null {
     trimmed = 'https://' + trimmed;
   }
   try {
-    new URL(trimmed);
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'localhost' || host.startsWith('127.') || host.startsWith('10.') ||
+        host.startsWith('192.168.') || host.startsWith('169.254.') || host === '0.0.0.0') {
+      return null;
+    }
     return trimmed;
   } catch {
     return null;
@@ -94,6 +100,11 @@ export async function handleSetUsername(request: Request, env: Env): Promise<Res
 }
 
 export async function handleCreateLink(request: Request, env: Env): Promise<Response> {
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  if (await isRateLimited(env, `create:${ip}`, 10, 60)) {
+    return new Response(JSON.stringify({ error: 'Too many attempts. Try again shortly.' }), { status: 429 });
+  }
+
   const user = await getUserFromRequest(request, env);
   if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
 
