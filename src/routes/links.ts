@@ -5,6 +5,10 @@ import { isRateLimited } from '../lib/rateLimit';
 
 const DATACENTER_HINTS = ['amazon', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner'];
 
+function toRankedList(counts: Record<string, number>) {
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }));
+}
+
 function normalizeUrl(url: string): string | null {
   let trimmed = url.trim();
   if (!/^https?:\/\//i.test(trimmed)) {
@@ -205,14 +209,14 @@ export async function handleGetLinkSummary(request: Request, env: Env, linkId: s
 
   const { results } = await env.link_tracker_db
     .prepare(
-      `SELECT timestamp, country, city, user_agent, ip_asn, ip_hash, bot_score, referrer
+      `SELECT timestamp, country, city, user_agent, ip_asn, ip_hash, bot_score, referrer, http_protocol, tls_version
        FROM click_events WHERE link_id = ? ORDER BY timestamp ASC`
     )
     .bind(linkId)
     .all<{
       timestamp: number; country: string | null; city: string | null;
       user_agent: string | null; ip_asn: string | null; ip_hash: string | null;
-      bot_score: number | null; referrer: string | null;
+      bot_score: number | null; referrer: string | null; http_protocol: string | null; tls_version: string | null;
     }>();
 
   const clicks = results;
@@ -221,6 +225,9 @@ export async function handleGetLinkSummary(request: Request, env: Env, linkId: s
   const avgBotScore = totalClicks
     ? Math.round(clicks.reduce((sum, c) => sum + (c.bot_score ?? 0), 0) / totalClicks)
     : 0;
+  const scoreBuckets = { high: 0, medium: 0, low: 0, critical: 0 };
+  const protocolCounts: Record<string, number> = {};
+  const tlsCounts: Record<string, number> = {};
 
   const countryCounts: Record<string, number> = {};
   const deviceCounts: Record<string, number> = {};
@@ -228,8 +235,16 @@ export async function handleGetLinkSummary(request: Request, env: Env, linkId: s
   let vpnCount = 0;
 
   for (const c of clicks) {
+    const s = c.bot_score ?? 0;
+    if (s >= 70) scoreBuckets.high++; else if (s >= 40) scoreBuckets.medium++; else if (s >= 20) scoreBuckets.low++; else scoreBuckets.critical++;
+
     const country = c.country || 'Unknown';
     countryCounts[country] = (countryCounts[country] || 0) + 1;
+
+    const p = c.http_protocol || 'Unknown';
+    protocolCounts[p] = (protocolCounts[p] || 0) + 1;
+    const t = c.tls_version || 'Unknown';
+    tlsCounts[t] = (tlsCounts[t] || 0) + 1;
 
     const { browser, os } = parseUserAgent(c.user_agent || '');
     const deviceKey = `${browser} / ${os}`;
@@ -244,9 +259,6 @@ export async function handleGetLinkSummary(request: Request, env: Env, linkId: s
     const asOrg = (c.ip_asn || '').toLowerCase();
     if (DATACENTER_HINTS.some(h => asOrg.includes(h))) vpnCount++;
   }
-
-  const toRankedList = (counts: Record<string, number>) =>
-    Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }));
 
   const trendMap: Record<string, number> = {};
   for (const c of clicks) {
@@ -264,7 +276,10 @@ export async function handleGetLinkSummary(request: Request, env: Env, linkId: s
     unique_visitors: uniqueVisitors,
     avg_bot_score: avgBotScore,
     vpn_count: vpnCount,
+    score_buckets: scoreBuckets,
     top_countries: toRankedList(countryCounts).slice(0, 8),
+    protocol_breakdown: toRankedList(protocolCounts),
+    tls_breakdown: toRankedList(tlsCounts),
     devices: toRankedList(deviceCounts).slice(0, 8),
     referrers: toRankedList(referrerCounts).slice(0, 8),
     trend,
@@ -318,4 +333,74 @@ export async function handleGetLinkClicks(request: Request, env: Env, linkId: st
   });
 
   return new Response(JSON.stringify({ clicks: enriched }), { headers: { 'content-type': 'application/json' } });
+}
+
+export async function handleGetAnalytics(request: Request, env: Env): Promise<Response> {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 });
+
+  const { results: clicks } = await env.link_tracker_db
+  .prepare(
+    `SELECT click_events.bot_score, click_events.country, click_events.ip_asn, click_events.timestamp,
+            click_events.user_agent, click_events.http_protocol, click_events.tls_version
+     FROM click_events JOIN links ON click_events.link_id = links.id
+     WHERE links.user_id = ?`
+  )
+    .bind(user.id)
+    .all<{ bot_score: number | null; country: string | null; ip_asn: string | null; timestamp: number; user_agent: string | null; http_protocol: string | null; tls_version: string | null }>();
+
+  const { results: linkRows } = await env.link_tracker_db
+    .prepare('SELECT COUNT(*) as count FROM links WHERE user_id = ?')
+    .bind(user.id)
+    .all<{ count: number }>();
+
+  const totalClicks = clicks.length;
+  const avgBotScore = totalClicks ? Math.round(clicks.reduce((s, c) => s + (c.bot_score ?? 0), 0) / totalClicks) : 0;
+  const datacenterHints = ['amazon', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner'];
+  const vpnCount = clicks.filter(c => datacenterHints.some(h => (c.ip_asn || '').toLowerCase().includes(h))).length;
+  const scoreBuckets = { high: 0, medium: 0, low: 0, critical: 0 };
+  const protocolCounts: Record<string, number> = {};
+  const tlsCounts: Record<string, number> = {};
+  const deviceCounts: Record<string, number> = {};
+
+  for (const c of clicks) {
+    const s = c.bot_score ?? 0;
+    if (s >= 70) scoreBuckets.high++; else if (s >= 40) scoreBuckets.medium++; else if (s >= 20) scoreBuckets.low++; else scoreBuckets.critical++;
+
+    const p = c.http_protocol || 'Unknown';
+    protocolCounts[p] = (protocolCounts[p] || 0) + 1;
+    const t = c.tls_version || 'Unknown';
+    tlsCounts[t] = (tlsCounts[t] || 0) + 1;
+
+    const { browser, os } = parseUserAgent(c.user_agent || '');
+    const deviceKey = `${browser} / ${os}`;
+    deviceCounts[deviceKey] = (deviceCounts[deviceKey] || 0) + 1;
+  }
+
+  const countryCounts: Record<string, number> = {};
+  for (const c of clicks) {
+    const k = c.country || 'Unknown';
+    countryCounts[k] = (countryCounts[k] || 0) + 1;
+  }
+  const topCountries = Object.entries(countryCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key, count]) => ({ key, count }));
+
+  const trendMap: Record<string, number> = {};
+  for (const c of clicks) {
+    const day = new Date(c.timestamp).toISOString().slice(0, 10);
+    trendMap[day] = (trendMap[day] || 0) + 1;
+  }
+  const trend = Object.entries(trendMap).sort(([a], [b]) => a.localeCompare(b)).map(([day, count]) => ({ day, count }));
+
+  return new Response(JSON.stringify({
+    total_links: linkRows[0]?.count ?? 0,
+    total_clicks: totalClicks,
+    avg_bot_score: avgBotScore,
+    vpn_count: vpnCount,
+    score_buckets: scoreBuckets,
+    devices: toRankedList(deviceCounts),
+    top_countries: topCountries,
+    protocol_breakdown: toRankedList(protocolCounts),
+    tls_breakdown: toRankedList(tlsCounts),
+    trend,
+  }), { headers: { 'content-type': 'application/json' } });
 }

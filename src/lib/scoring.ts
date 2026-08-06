@@ -48,7 +48,8 @@ export function computeBotScore(request: Request): BotScoreResult {
     reasons.push('Legacy HTTP/1.1 protocol (-10)');
   }
 
-  if (!request.headers.get('sec-ch-ua')) {
+  const uaClaimsChromium = uaLower.includes('chrome/') || uaLower.includes('edg/') || uaLower.includes('opr/');
+  if (uaClaimsChromium && !request.headers.get('sec-ch-ua')) {
     score -= 10;
     reasons.push('Missing sec-ch-ua client hint (-10)');
   }

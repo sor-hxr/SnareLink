@@ -38,16 +38,12 @@ export async function handleChat(request: Request, env: Env): Promise<Response> 
     return new Response(JSON.stringify({ error: 'Too many attempts. Try again shortly.' }), { status: 429 });
   }
 
-  const user = await getUserFromRequest(request, env);
   const body = await request.json<{ message?: string; history?: { role: string; content: string }[] }>().catch(() => null);
   const userMessage = body?.message?.trim();
-  if (!userMessage) {
-    return new Response(JSON.stringify({ error: 'Message required' }), { status: 400 });
-  }
-  if (userMessage.length > USER_MESSAGE_MAX_LENGTH) {
-    return new Response(JSON.stringify({ error: 'Message too long' }), { status: 400 });
-  }
+  if (!userMessage) return new Response(JSON.stringify({ error: 'Message required' }), { status: 400 });
+  if (userMessage.length > USER_MESSAGE_MAX_LENGTH) return new Response(JSON.stringify({ error: 'Message too long' }), { status: 400 });
 
+  const user = await getUserFromRequest(request, env);
   if (!user) {
     const clientHistory = (body?.history || []).slice(-4).map(h => ({
       role: h.role,

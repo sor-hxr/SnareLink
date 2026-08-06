@@ -15,10 +15,10 @@ import {
   handleGetMe,
   handleGetLinkSummary,
   handleGetLinkClicks,
+  handleGetAnalytics,
 } from './routes/links';
 import { handleEnrich } from './routes/enrich';
 import { servePrivacy, serveTerms, serveAbout, servePricing } from './routes/pages';
-import { serveAccountPage } from './routes/account';
 import { serveDashboard } from './routes/dashboard';
 import { serveManifest } from './manifest';
 import { serveServiceWorker } from './sw';
@@ -29,6 +29,7 @@ export interface Env {
   RATE_LIMIT_KV: KVNamespace;
   RESEND_API_KEY: string;
   AI: Ai;
+  ASSETS: Fetcher;
 }
 
 export default {
@@ -36,11 +37,13 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/') return serveDashboard();
+    if (url.pathname === '/analytics' || url.pathname === '/account') return serveDashboard();
     if (url.pathname === '/api/login') return handleLogin(request, env);
     if (url.pathname === '/api/verify') return handleVerify(request, env);
     if (url.pathname === '/api/username') return handleSetUsername(request, env);
     if (url.pathname === '/api/me') return handleGetMe(request, env);
     if (url.pathname === '/api/chat') return handleChat(request, env);
+    if (url.pathname === '/api/analytics') return handleGetAnalytics(request, env);
     if (url.pathname === '/api/sessions') return handleListSessions(request, env);
     const sessionIdMatch = url.pathname.match(/^\/api\/sessions\/([a-f0-9-]+)$/);
     if (sessionIdMatch && request.method === 'DELETE') return handleRevokeSession(request, env, sessionIdMatch[1]);
@@ -49,7 +52,6 @@ export default {
     if (url.pathname === '/terms') return serveTerms();
     if (url.pathname === '/about') return serveAbout();
     if (url.pathname === '/pricing') return servePricing();
-    if (url.pathname === '/account') return serveAccountPage();
     if (url.pathname === '/manifest.json') return serveManifest();
     if (url.pathname === '/sw.js') return serveServiceWorker();
     if (url.pathname === '/robots.txt') {

@@ -53,7 +53,7 @@ function timeAgo(ts) {
 
 function parseUA(ua) {
   ua = (ua || '').toLowerCase();
-  let b = 'Older session (pre-tracking)';
+  let b = 'Unknown browser';
   if (ua.includes('edg/')) b = 'Edge';
   else if (ua.includes('chrome/')) b = 'Chrome';
   else if (ua.includes('firefox/')) b = 'Firefox';
@@ -75,7 +75,7 @@ async function loadSessions() {
   list.innerHTML = data.sessions.map(s =>
     '<div class="session-row"><div>' + parseUA(s.user_agent) +
     (s.is_current ? '<span class="badge-current">this device</span>' : '') +
-    '<div class="session-meta">last active ' + timeAgo(s.last_seen || s.created_at) + '</div></div>' +
+    '<div class="session-meta">last active ' + timeAgo(s.last_seen) + '</div></div>' +
     (s.is_current ? '' : '<button class="danger" onclick="revokeOne(\\'' + s.id + '\\')">Revoke</button>') +
     '</div>'
   ).join('');
